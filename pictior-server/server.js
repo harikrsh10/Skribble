@@ -256,8 +256,9 @@ app.get('/room/:roomId', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3002;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`🎮 Pictior WebSocket server running on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/health`);
-  console.log(`🌐 WebSocket URL: ws://localhost:${PORT}`);
+  console.log(`📊 Health check: http://192.168.31.119:${PORT}/health`);
+  console.log(`🌐 WebSocket URL: ws://192.168.31.119:${PORT}`);
+  console.log(`🌐 Local WebSocket URL: ws://localhost:${PORT}`);
 }); 

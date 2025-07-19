@@ -73,7 +73,7 @@ export default function RoomSetup({ roomId, onStartGame, onCancel }: RoomSetupPr
     setIsConnecting(true)
     
     // Create WebSocket connection to listen for real players
-    const wsServerUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:3002'
+    const wsServerUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'wss://skribble-production-a394.up.railway.app'
     const wsUrl = `${wsServerUrl}/room/${roomId}`
     const ws = new WebSocket(wsUrl)
     
