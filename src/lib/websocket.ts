@@ -56,8 +56,8 @@ export class GameWebSocket {
   connect() {
     try {
       // Use environment variable for WebSocket server URL
-      // For Railway deployment, use the Railway WebSocket URL
-      const wsServerUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'wss://skribble-production-a394.up.railway.app'
+      // For local testing, use localhost
+      const wsServerUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:3002'
       const wsUrl = `${wsServerUrl}/room/${this.roomId}`
       
       this.ws = new WebSocket(wsUrl)

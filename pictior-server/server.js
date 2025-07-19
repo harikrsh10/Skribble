@@ -16,10 +16,20 @@ const players = new Map();
 
 // WebSocket connection handling
 wss.on('connection', (ws, req) => {
-  const roomId = req.url.split('/').pop();
+  // Extract room ID from URL path
+  const urlParts = req.url.split('/');
+  const roomId = urlParts[urlParts.length - 1];
   const playerId = `player_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
   console.log(`Player ${playerId} connected to room ${roomId}`);
+  console.log(`URL: ${req.url}, Room ID: ${roomId}`);
+  
+  // Validate room ID
+  if (!roomId || roomId === '') {
+    console.error('Invalid room ID:', roomId);
+    ws.close(1008, 'Invalid room ID');
+    return;
+  }
   
   // Initialize room if it doesn't exist
   if (!rooms.has(roomId)) {

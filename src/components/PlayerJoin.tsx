@@ -29,7 +29,7 @@ export default function PlayerJoin({ roomId, onJoinRoom, onCancel }: PlayerJoinP
     setIsConnecting(true)
     
     // Create WebSocket connection to listen for room updates
-    const wsServerUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'wss://skribble-production-a394.up.railway.app'
+    const wsServerUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:3002'
     const wsUrl = `${wsServerUrl}/room/${roomId}`
     const websocket = new WebSocket(wsUrl)
     setWs(websocket)
