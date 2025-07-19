@@ -123,6 +123,20 @@ function handleMessage(roomId, playerId, message) {
       broadcastToRoom(roomId, message, [playerId]); // Don't send back to sender
       break;
       
+    case 'update_player':
+      // Update player name/avatar
+      const player = room.players.get(playerId);
+      if (player && message.data) {
+        if (message.data.playerName) {
+          player.name = message.data.playerName;
+        }
+        if (message.data.playerAvatar) {
+          player.avatar = message.data.playerAvatar;
+        }
+        updatePlayerList(roomId);
+      }
+      break;
+      
     case 'heartbeat':
       // Acknowledge heartbeat
       sendToPlayer(playerId, {

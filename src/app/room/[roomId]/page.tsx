@@ -42,12 +42,7 @@ export default function RoomPage() {
   }
 
   const handlePlayerJoin = (playerName: string, playerAvatar: string) => {
-    // Save player info to localStorage
-    localStorage.setItem('playerInfo', JSON.stringify({
-      name: playerName,
-      avatar: playerAvatar,
-      roomId
-    }))
+    // Player info is already saved in PlayerJoin component
     setPlayerJoined(true)
   }
 
