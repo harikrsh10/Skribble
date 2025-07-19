@@ -25,6 +25,7 @@ export default function Home() {
   const handleStartGame = (settings: GameSettings) => {
     // Store settings in localStorage for the game to use
     localStorage.setItem('gameSettings', JSON.stringify(settings))
+    localStorage.setItem('currentRoomId', currentRoomId)
     router.push(`/room/${currentRoomId}`)
   }
 

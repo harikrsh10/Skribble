@@ -15,20 +15,29 @@ export default function RoomPage() {
   const [isHost, setIsHost] = useState(false)
   const [playerJoined, setPlayerJoined] = useState(false)
 
-  // Load game settings from localStorage
+  // Check if this user is the host (created the room)
   useEffect(() => {
     const savedSettings = localStorage.getItem('gameSettings')
-    if (savedSettings) {
+    const savedRoomId = localStorage.getItem('currentRoomId')
+    
+    // If they have settings AND the room ID matches, they're the host
+    if (savedSettings && savedRoomId === roomId) {
       const settings = JSON.parse(savedSettings)
       setGameSettings(settings)
-      setIsHost(true) // If settings exist, this is the host
+      setIsHost(true)
+    } else {
+      // Clear any old settings if room ID doesn't match
+      localStorage.removeItem('gameSettings')
+      localStorage.removeItem('currentRoomId')
     }
+    
     setIsLoading(false)
-  }, [])
+  }, [roomId])
 
   const handleStartGame = (settings: GameSettings) => {
-    // Save settings to localStorage
+    // Save settings to localStorage with room ID
     localStorage.setItem('gameSettings', JSON.stringify(settings))
+    localStorage.setItem('currentRoomId', roomId)
     setGameSettings(settings)
   }
 
@@ -43,7 +52,10 @@ export default function RoomPage() {
   }
 
   const handleCancel = () => {
-    // Redirect to home page
+    // Clear settings and redirect to home page
+    localStorage.removeItem('gameSettings')
+    localStorage.removeItem('currentRoomId')
+    localStorage.removeItem('playerInfo')
     router.push('/')
   }
 

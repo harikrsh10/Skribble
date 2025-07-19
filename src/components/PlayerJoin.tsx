@@ -136,6 +136,13 @@ export default function PlayerJoin({ roomId, onJoinRoom, onCancel }: PlayerJoinP
                 {isConnecting ? 'Connecting...' : 'Join Room'}
               </button>
 
+              {/* Waiting Message */}
+              <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="text-sm text-yellow-800 text-center">
+                  ⏳ Waiting for host to start the game...
+                </div>
+              </div>
+
               {/* Cancel Button */}
               <button
                 onClick={onCancel}
