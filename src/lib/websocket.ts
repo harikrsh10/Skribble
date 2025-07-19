@@ -33,8 +33,7 @@ export class GameWebSocket {
           type: 'join',
           userId: this.userId,
           userName: this.userName,
-          data: {},
-          timestamp: Date.now()
+          data: {}
         })
       }
       
@@ -71,7 +70,7 @@ export class GameWebSocket {
     }
   }
 
-  send(message: { type: GameMessage['type']; userId: string; userName: string; data: any }) {
+  send(message: Omit<GameMessage, 'timestamp'>) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({
         ...message,
