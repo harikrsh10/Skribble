@@ -6,7 +6,7 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Pictior - Real-time Drawing Game',
-  description: 'A multiplayer drawing game built with Next.js and Liveblocks',
+  description: 'A multiplayer drawing game built with Next.js and WebSocket',
 }
 
 export default function RootLayout({

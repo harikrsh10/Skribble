@@ -1,30 +1,29 @@
 'use client'
 
 import { useRef, useEffect, useState } from 'react'
-import { useMutation } from '@/lib/liveblocks'
 
 interface DrawingCanvasProps {
   isDrawer: boolean
   strokes: any[]
+  onStrokeUpdate?: (strokes: any[]) => void
 }
 
-export default function DrawingCanvas({ isDrawer, strokes }: DrawingCanvasProps) {
+export default function DrawingCanvas({ isDrawer, strokes, onStrokeUpdate }: DrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [currentStroke, setCurrentStroke] = useState<any[]>([])
   
-  const addStroke = useMutation(({ storage }) => {
-    if (currentStroke.length > 0) {
-      const strokes = storage.get('canvas').strokes || []
-      strokes.push({
+  const addStroke = () => {
+    if (currentStroke.length > 0 && onStrokeUpdate) {
+      const newStrokes = [...strokes, {
         points: currentStroke,
         color: '#000000',
         width: 2
-      })
-      storage.set('canvas', { strokes })
+      }]
+      onStrokeUpdate(newStrokes)
       setCurrentStroke([])
     }
-  }, [currentStroke])
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current

@@ -33,7 +33,7 @@ export function useGameLogic({ gameSettings, allPlayers, state, actions }: UseGa
       id: Date.now().toString(),
       userId: 'system',
       userName: 'System',
-      message: `🎨 ${randomPlayer.info.name} is drawing now!`,
+      message: `🎨 ${randomPlayer.name} is drawing now!`,
       timestamp: Date.now()
     }
     actions.addMessage(welcomeMessage)
@@ -64,7 +64,7 @@ export function useGameLogic({ gameSettings, allPlayers, state, actions }: UseGa
       const successMessage: GameMessage = {
         id: Date.now().toString(),
         userId: playerId,
-        userName: player?.info.name || 'Unknown',
+        userName: player?.name || 'Unknown',
         message: `🎉 Correct! "${state.currentWord}" (+${points} points)`,
         timestamp: Date.now()
       }
@@ -77,7 +77,7 @@ export function useGameLogic({ gameSettings, allPlayers, state, actions }: UseGa
       const message: GameMessage = {
         id: Date.now().toString(),
         userId: playerId,
-        userName: player?.info.name || 'Unknown',
+        userName: player?.name || 'Unknown',
         message: guess,
         timestamp: Date.now()
       }
@@ -145,7 +145,7 @@ export function useGameLogic({ gameSettings, allPlayers, state, actions }: UseGa
             const chatMessage: GameMessage = {
               id: Date.now().toString(),
               userId: randomAI.id,
-              userName: randomAI.info.name,
+              userName: randomAI.name,
               message: simulateAIMessage(),
               timestamp: Date.now()
             }
