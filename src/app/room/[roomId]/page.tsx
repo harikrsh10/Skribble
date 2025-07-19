@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { RoomProvider } from '@/lib/liveblocks'
 import GameRoom from '@/components/GameRoom'
 import { GameSettings } from '@/components/RoomSetup'
 
@@ -35,34 +34,5 @@ export default function RoomPage() {
     )
   }
 
-  return (
-    <RoomProvider 
-      id={roomId} 
-      initialPresence={{
-        cursor: null,
-        name: gameSettings.hostName,
-        isDrawing: false,
-        score: 0
-      }}
-      initialStorage={{
-        canvas: {
-          strokes: []
-        },
-        game: {
-          currentWord: '',
-          timeLeft: gameSettings.roundTime,
-          isDrawer: false,
-          messages: [],
-          scores: {},
-          currentRound: 1,
-          totalRounds: gameSettings.totalRounds,
-          roundStartTime: 0,
-          correctGuesses: [],
-          gameSettings: gameSettings
-        }
-      }}
-    >
-      <GameRoom roomId={roomId} />
-    </RoomProvider>
-  )
+  return <GameRoom roomId={roomId} />
 } 

@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useSelf, useOthers, useStorage, useMutation } from '@/lib/liveblocks'
 import EnhancedDrawingCanvas from './EnhancedDrawingCanvas'
 import WordGuessing from './WordGuessing'
 import ChatBox from './ChatBox'
 import Scoreboard from './Scoreboard'
 import GameInfo from './GameInfo'
 import { getRandomWord } from '@/lib/words'
+import { generateDummyPlayers, simulateAIGuess, simulateAIMessage, DummyPlayer } from '@/lib/dummyPlayers'
+import { GameSettings } from './RoomSetup'
 
 interface Point {
   x: number
@@ -28,120 +29,222 @@ interface GameRoomProps {
 }
 
 export default function GameRoom({ roomId }: GameRoomProps) {
-  const self = useSelf()
-  const others = useOthers()
-  const storage = useStorage()
-  
-  const game = storage?.game
-  const canvas = storage?.canvas
-  
-  const [guess, setGuess] = useState('')
-  const [timeLeft, setTimeLeft] = useState(game?.timeLeft || 60)
-  const [currentWord, setCurrentWord] = useState(game?.currentWord || '')
-  const [currentDrawer, setCurrentDrawer] = useState<string | null>(game?.isDrawer ? self?.id : null)
-  const [scores, setScores] = useState<Record<string, number>>(game?.scores || {})
-  const [messages, setMessages] = useState<any[]>(game?.messages || [])
-  const [strokes, setStrokes] = useState<Stroke[]>(canvas?.strokes || [])
-  const [currentRound, setCurrentRound] = useState(game?.currentRound || 1)
-  const [totalRounds, setTotalRounds] = useState(game?.totalRounds || 5)
-  const [correctGuesses, setCorrectGuesses] = useState<string[]>(game?.correctGuesses || [])
+  const [gameSettings, setGameSettings] = useState<GameSettings | null>(null)
+  const [currentWord, setCurrentWord] = useState('')
+  const [timeLeft, setTimeLeft] = useState(60)
+  const [isDrawer, setIsDrawer] = useState(false)
+  const [messages, setMessages] = useState<any[]>([])
+  const [scores, setScores] = useState<Record<string, number>>({})
+  const [strokes, setStrokes] = useState<Stroke[]>([])
+  const [currentRound, setCurrentRound] = useState(1)
+  const [totalRounds, setTotalRounds] = useState(5)
+  const [roundStartTime, setRoundStartTime] = useState(0)
+  const [correctGuesses, setCorrectGuesses] = useState<string[]>([])
+  const [dummyPlayers, setDummyPlayers] = useState<DummyPlayer[]>([])
+  const [allPlayers, setAllPlayers] = useState<any[]>([])
+  const [currentDrawerId, setCurrentDrawerId] = useState<string>('')
 
-  const updateGame = useMutation((updates: any) => {
-    if (!storage) return
-    storage.set('game', { ...game, ...updates })
-  }, [storage, game])
+  // Load game settings from localStorage and initialize dummy players
+  useEffect(() => {
+    const savedSettings = localStorage.getItem('gameSettings')
+    if (savedSettings) {
+      const settings = JSON.parse(savedSettings)
+      setGameSettings(settings)
+      setTimeLeft(settings.roundTime)
+      setTotalRounds(settings.totalRounds)
+      
+      // Generate dummy players
+      const dummies = generateDummyPlayers(3) // 3 AI players
+      setDummyPlayers(dummies)
+      
+      // Create all players array (host + dummies)
+      const hostPlayer = {
+        id: 'player1',
+        info: { name: settings.hostName, picture: settings.hostAvatar },
+        isAI: false,
+        score: 0
+      }
+      
+      const allPlayersArray = [hostPlayer, ...dummies.map(dp => ({
+        id: dp.id,
+        info: { name: dp.name, picture: dp.avatar },
+        isAI: dp.isAI,
+        score: dp.score
+      }))]
+      
+      setAllPlayers(allPlayersArray)
+      
+      // Initialize scores
+      const initialScores: Record<string, number> = {}
+      allPlayersArray.forEach(player => {
+        initialScores[player.id] = player.score
+      })
+      setScores(initialScores)
+    }
+  }, [])
 
-  const updateCanvas = useMutation((updates: any) => {
-    if (!storage) return
-    storage.set('canvas', { ...canvas, ...updates })
-  }, [storage, canvas])
-
-  const startNewRound = useMutation(() => {
-    if (!self || !others) return
-    
-    const allPlayers = [self, ...others]
-    const randomPlayer = allPlayers[Math.floor(Math.random() * allPlayers.length)]
-    const gameSettings = game?.gameSettings
-    
-    if (!gameSettings) return
+  // Start new round
+  const startNewRound = () => {
+    if (!gameSettings || allPlayers.length === 0) return
     
     const newWord = getRandomWord(gameSettings.selectedCategories, gameSettings.allowAdultWords)
-    
     setCurrentWord(newWord)
-    setCurrentDrawer(randomPlayer.id)
     setStrokes([])
     setCorrectGuesses([])
-    setTimeLeft(gameSettings.roundTime)
+    setRoundStartTime(Date.now())
     
-    // Update storage
-    updateGame({
-      currentWord: newWord,
-      isDrawer: randomPlayer.id === self.id,
-      roundStartTime: Date.now(),
-      correctGuesses: []
-    })
-    
-    updateCanvas({ strokes: [] })
+    // Randomly select a drawer from all players
+    const randomPlayer = allPlayers[Math.floor(Math.random() * allPlayers.length)]
+    setCurrentDrawerId(randomPlayer.id)
+    setIsDrawer(randomPlayer.id === 'player1')
     
     // Add welcome message
     const welcomeMessage = {
       id: Date.now().toString(),
       userId: 'system',
       userName: 'System',
-      message: `🎨 ${randomPlayer.info?.name} is drawing now!`,
+      message: `🎨 ${randomPlayer.info.name} is drawing now!`,
       timestamp: Date.now()
     }
-    
-    const newMessages = [...messages, welcomeMessage]
-    setMessages(newMessages)
-    updateGame({ messages: newMessages })
-  }, [self, others, game, messages, updateGame, updateCanvas])
+    setMessages(prev => [...prev, welcomeMessage])
+  }
 
-  const handleGuess = useMutation(() => {
-    if (!guess.trim() || !currentWord || !self) return
+  // Timer effect
+  useEffect(() => {
+    if (!roundStartTime || !gameSettings) return
     
-    const isCorrect = guess.trim().toLowerCase() === currentWord.toLowerCase()
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - roundStartTime
+      const remaining = Math.max(0, Math.ceil((gameSettings.roundTime * 1000 - elapsed) / 1000))
+      
+      setTimeLeft(remaining)
+      
+      if (remaining <= 0) {
+        // Round ended
+        if (currentRound < totalRounds) {
+          setCurrentRound(prev => prev + 1)
+          startNewRound()
+        } else {
+          // Game ended
+          alert('Game finished! Final scores will be displayed.')
+        }
+      }
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [roundStartTime, gameSettings, currentRound, totalRounds])
+
+  // AI behavior simulation
+  useEffect(() => {
+    if (!currentWord || isDrawer || correctGuesses.length >= allPlayers.length - 1) return
     
-    if (isCorrect && !correctGuesses.includes(self.id)) {
-      // Calculate points based on order
+    // Simulate AI guesses and messages
+    const aiInterval = setInterval(() => {
+      // Random chance for AI to make a guess or send a message
+      if (Math.random() < 0.3) { // 30% chance every few seconds
+        const aiPlayers = allPlayers.filter(p => p.isAI && p.id !== currentDrawerId)
+        if (aiPlayers.length > 0) {
+          const randomAI = aiPlayers[Math.floor(Math.random() * aiPlayers.length)]
+          
+          if (Math.random() < 0.7) { // 70% chance to guess, 30% to chat
+            // AI makes a guess
+            const guess = simulateAIGuess(currentWord, 'medium')
+            const isCorrect = guess.toLowerCase() === currentWord.toLowerCase()
+            
+            if (isCorrect && !correctGuesses.includes(randomAI.id)) {
+              // AI got it right
+              const guessOrder = correctGuesses.length + 1
+              const basePoints = 100
+              const points = Math.max(10, basePoints - (guessOrder - 1) * 20)
+              
+              setScores(prev => ({
+                ...prev,
+                [randomAI.id]: (prev[randomAI.id] || 0) + points
+              }))
+              
+              setCorrectGuesses(prev => [...prev, randomAI.id])
+              
+              const successMessage = {
+                id: Date.now().toString(),
+                userId: randomAI.id,
+                userName: randomAI.info.name,
+                message: `🎉 Correct! "${currentWord}" (+${points} points)`,
+                timestamp: Date.now()
+              }
+              setMessages(prev => [...prev, successMessage])
+            } else {
+              // AI made a wrong guess
+              const guessMessage = {
+                id: Date.now().toString(),
+                userId: randomAI.id,
+                userName: randomAI.info.name,
+                message: guess,
+                timestamp: Date.now()
+              }
+              setMessages(prev => [...prev, guessMessage])
+            }
+          } else {
+            // AI sends a chat message
+            const chatMessage = {
+              id: Date.now().toString(),
+              userId: randomAI.id,
+              userName: randomAI.info.name,
+              message: simulateAIMessage(),
+              timestamp: Date.now()
+            }
+            setMessages(prev => [...prev, chatMessage])
+          }
+        }
+      }
+    }, 3000) // Check every 3 seconds
+
+    return () => clearInterval(aiInterval)
+  }, [currentWord, isDrawer, correctGuesses, allPlayers, currentDrawerId])
+
+  // Start first round
+  useEffect(() => {
+    if (gameSettings) {
+      startNewRound()
+    }
+  }, [gameSettings])
+
+  const handleGuess = (guess: string) => {
+    if (!currentWord) return
+    
+    const isCorrect = guess.toLowerCase() === currentWord.toLowerCase()
+    
+    if (isCorrect && !correctGuesses.includes('player1')) {
+      // Calculate points based on order (first gets highest points)
       const guessOrder = correctGuesses.length + 1
       const basePoints = 100
-      const points = Math.max(10, basePoints - (guessOrder - 1) * 20)
+      const points = Math.max(10, basePoints - (guessOrder - 1) * 20) // First: 100, Second: 80, etc.
       
       // Update scores
-      const newScore = (scores[self.id] || 0) + points
-      const newScores = { ...scores, [self.id]: newScore }
-      setScores(newScores)
+      const newScore = (scores['player1'] || 0) + points
+      setScores(prev => ({
+        ...prev,
+        'player1': newScore
+      }))
       
       // Add to correct guesses
-      const newCorrectGuesses = [...correctGuesses, self.id]
-      setCorrectGuesses(newCorrectGuesses)
+      setCorrectGuesses(prev => [...prev, 'player1'])
       
       // Add success message
-      const successMessage = {
+      const newMessage = {
         id: Date.now().toString(),
-        userId: self.id,
-        userName: self.info?.name || 'You',
+        userId: 'player1',
+        userName: 'You',
         message: `🎉 Correct! "${currentWord}" (+${points} points)`,
         timestamp: Date.now()
       }
+      setMessages(prev => [...prev, newMessage])
       
-      const newMessages = [...messages, successMessage]
-      setMessages(newMessages)
-      
-      // Update storage
-      updateGame({ 
-        scores: newScores, 
-        correctGuesses: newCorrectGuesses,
-        messages: newMessages
-      })
-      
-      // Check if round should end
-      if (newCorrectGuesses.length >= [self, ...others].length - 1) {
+      // Check if all players have guessed correctly
+      if (correctGuesses.length + 1 >= allPlayers.length - 1) { // All players except drawer
+        // Round ends early
         setTimeout(() => {
           if (currentRound < totalRounds) {
             setCurrentRound(prev => prev + 1)
-            updateGame({ currentRound: currentRound + 1 })
             startNewRound()
           } else {
             alert('Game finished! Final scores will be displayed.')
@@ -152,81 +255,36 @@ export default function GameRoom({ roomId }: GameRoomProps) {
       // Add regular message
       const newMessage = {
         id: Date.now().toString(),
-        userId: self.id,
-        userName: self.info?.name || 'You',
-        message: guess.trim(),
+        userId: 'player1',
+        userName: 'You',
+        message: guess,
         timestamp: Date.now()
       }
-      
-      const newMessages = [...messages, newMessage]
-      setMessages(newMessages)
-      updateGame({ messages: newMessages })
+      setMessages(prev => [...prev, newMessage])
     }
-    
-    setGuess('')
-  }, [guess, self, currentWord, scores, correctGuesses, messages, currentRound, totalRounds, others, updateGame, startNewRound])
+  }
 
-  const handleSendMessage = useMutation((message: string) => {
-    if (!self) return
-    
+  const handleSendMessage = (message: string) => {
     const newMessage = {
       id: Date.now().toString(),
-      userId: self.id,
-      userName: self.info?.name || 'You',
+      userId: 'player1',
+      userName: 'You',
       message: message,
       timestamp: Date.now()
     }
-    
-    const newMessages = [...messages, newMessage]
-    setMessages(newMessages)
-    updateGame({ messages: newMessages })
-  }, [self, messages, updateGame])
+    setMessages(prev => [...prev, newMessage])
+  }
 
-  const handleStrokesChange = useMutation((newStrokes: Stroke[]) => {
+  const handleStrokesChange = (newStrokes: Stroke[]) => {
     setStrokes(newStrokes)
-    updateCanvas({ strokes: newStrokes })
-  }, [updateCanvas])
+  }
 
-  // Timer effect
-  useEffect(() => {
-    if (!game?.roundStartTime) return
-    
-    const timer = setInterval(() => {
-      const elapsed = Date.now() - game.roundStartTime
-      const remaining = Math.max(0, Math.ceil((game.timeLeft * 1000 - elapsed) / 1000))
-      
-      setTimeLeft(remaining)
-      
-      if (remaining <= 0) {
-        if (currentRound < totalRounds) {
-          setCurrentRound(prev => prev + 1)
-          updateGame({ currentRound: currentRound + 1 })
-          startNewRound()
-        } else {
-          alert('Game finished! Final scores will be displayed.')
-        }
-      }
-    }, 1000)
-
-    return () => clearInterval(timer)
-  }, [game?.roundStartTime, game?.timeLeft, currentRound, totalRounds, updateGame, startNewRound])
-
-  // Start first round
-  useEffect(() => {
-    if (game?.gameSettings && !currentWord) {
-      startNewRound()
-    }
-  }, [game?.gameSettings, currentWord, startNewRound])
-
-  const isCurrentDrawer = self?.id === currentDrawer
-  const allPlayers = [self, ...others].filter(Boolean)
-
-  if (!self) {
+  if (!gameSettings) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-xl font-semibold text-gray-800 mb-4">Connecting...</div>
-          <div className="text-gray-600">Please wait while we connect to the game.</div>
+          <div className="text-xl font-semibold text-gray-800 mb-4">Loading game...</div>
+          <div className="text-gray-600">Please wait while we set up your game.</div>
         </div>
       </div>
     )
@@ -239,16 +297,16 @@ export default function GameRoom({ roomId }: GameRoomProps) {
           {/* Main game area */}
           <div className="lg:col-span-3 space-y-4">
             <GameInfo 
-              roomId="live"
-              currentWord={isCurrentDrawer ? currentWord : ''}
+              roomId={roomId}
+              currentWord={isDrawer ? currentWord : ''}
               timeLeft={timeLeft}
-              isDrawer={isCurrentDrawer}
+              isDrawer={isDrawer}
               currentRound={currentRound}
               totalRounds={totalRounds}
             />
             
             <EnhancedDrawingCanvas 
-              isDrawer={isCurrentDrawer}
+              isDrawer={isDrawer}
               strokes={strokes}
               onStrokesChange={handleStrokesChange}
             />
@@ -259,7 +317,7 @@ export default function GameRoom({ roomId }: GameRoomProps) {
             <WordGuessing
               currentWord={currentWord}
               onGuess={handleGuess}
-              isDrawer={isCurrentDrawer}
+              isDrawer={isDrawer}
               timeLeft={timeLeft}
             />
           </div>
@@ -273,7 +331,7 @@ export default function GameRoom({ roomId }: GameRoomProps) {
           />
           <ChatBox 
             messages={messages}
-            currentUserId={self.id}
+            currentUserId="player1"
             onSendMessage={handleSendMessage}
           />
         </div>
