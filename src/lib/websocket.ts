@@ -58,7 +58,7 @@ export class GameWebSocket {
       // Use a real WebSocket server URL
       // For development, you can use a service like ngrok or deploy your own server
       const wsUrl = process.env.NODE_ENV === 'development' 
-        ? `ws://localhost:3001/room/${this.roomId}`
+        ? `ws://localhost:3002/room/${this.roomId}`
         : `wss://your-websocket-server.com/room/${this.roomId}`
       
       this.ws = new WebSocket(wsUrl)

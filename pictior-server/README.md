@@ -32,13 +32,13 @@ npm start
 
 ### Health Check
 ```
-GET http://localhost:3001/health
+GET http://localhost:3002/health
 ```
 Returns server status and statistics.
 
 ### Room Information
 ```
-GET http://localhost:3001/room/:roomId
+GET http://localhost:3002/room/:roomId
 ```
 Returns information about a specific game room.
 
@@ -46,7 +46,7 @@ Returns information about a specific game room.
 
 Connect to the WebSocket server:
 ```
-ws://localhost:3001/room/:roomId
+ws://localhost:3002/room/:roomId
 ```
 
 Where `:roomId` is the unique identifier for your game room.
@@ -64,7 +64,7 @@ The server handles the following message types:
 
 ## Environment Variables
 
-- `PORT` - Server port (default: 3001)
+- `PORT` - Server port (default: 3002)
 
 ## Development
 
@@ -86,9 +86,9 @@ The server uses nodemon for automatic restarting during development. Any changes
 ## Troubleshooting
 
 ### Port Already in Use
-If port 3001 is already in use, set a different port:
+If port 3002 is already in use, set a different port:
 ```bash
-PORT=3002 npm run dev
+PORT=3003 npm run dev
 ```
 
 ### Connection Issues

@@ -8,21 +8,16 @@
     "dev": "nodemon server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [
-    "websocket",
-    "multiplayer",
-    "drawing",
-    "game"
-  ],
+  "keywords": ["websocket", "multiplayer", "drawing", "game"],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.21.2",
-    "ws": "^8.18.3"
+    "express": "^4.18.2",
+    "ws": "^8.14.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
   }
-}
+} 
