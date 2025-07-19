@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Player } from '@/types/game'
+import { useMultiplayer, GameSettings } from '@/hooks/useMultiplayer'
 
 const AVATARS = [
   '🐱', '🐶', '🐰', '🐼', '🐨', '🐯', '🦁', '🐸', '🐙', '🦄',
@@ -28,15 +29,6 @@ interface RoomSetupProps {
   onCancel: () => void
 }
 
-export interface GameSettings {
-  hostName: string
-  hostAvatar: string
-  selectedCategories: string[]
-  allowAdultWords: boolean
-  roundTime: number
-  totalRounds: number
-}
-
 export default function RoomSetup({ roomId, onStartGame, onCancel }: RoomSetupProps) {
   const [hostName, setHostName] = useState('')
   const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0])
@@ -45,8 +37,17 @@ export default function RoomSetup({ roomId, onStartGame, onCancel }: RoomSetupPr
   const [roundTime, setRoundTime] = useState(60)
   const [totalRounds, setTotalRounds] = useState(5)
   const [copied, setCopied] = useState(false)
-  const [connectedPlayers, setConnectedPlayers] = useState<Player[]>([])
-  const [isConnecting, setIsConnecting] = useState(false)
+  
+  // Use centralized multiplayer hook
+  const {
+    isConnected,
+    isConnecting,
+    players,
+    error,
+    joinRoom,
+    updatePlayer,
+    startGame
+  } = useMultiplayer(roomId, true) // true = is host
 
   const roomLink = `${window.location.origin}/room/${roomId}`
 
@@ -68,40 +69,26 @@ export default function RoomSetup({ roomId, onStartGame, onCancel }: RoomSetupPr
     )
   }
 
-  // Connect to WebSocket and listen for real players
+  // Auto-join room as host when connected
   useEffect(() => {
-    setIsConnecting(true)
-    
-    // Create WebSocket connection to listen for real players
-    const wsServerUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:3002'
-    const wsUrl = `${wsServerUrl}/room/${roomId}`
-    const ws = new WebSocket(wsUrl)
-    
-    ws.onopen = () => {
-      console.log('Connected to room for player updates')
-      setIsConnecting(false)
+    if (isConnected) {
+      console.log('Auto-joining room as host')
+      joinRoom('Host', selectedAvatar)
     }
-    
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data)
-        if (message.type === 'player_update' && message.data.players) {
-          setConnectedPlayers(message.data.players)
-        }
-      } catch (error) {
-        console.error('Error parsing WebSocket message:', error)
-      }
+  }, [isConnected, joinRoom, selectedAvatar])
+
+  // Update host info when name/avatar changes
+  useEffect(() => {
+    if (isConnected && hostName) {
+      updatePlayer(hostName, undefined)
     }
-    
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error)
-      setIsConnecting(false)
+  }, [isConnected, hostName, updatePlayer])
+
+  useEffect(() => {
+    if (isConnected && selectedAvatar) {
+      updatePlayer(undefined, selectedAvatar)
     }
-    
-    return () => {
-      ws.close()
-    }
-  }, [roomId])
+  }, [isConnected, selectedAvatar, updatePlayer])
 
   const handleStartGame = () => {
     if (!hostName.trim()) {
@@ -121,6 +108,14 @@ export default function RoomSetup({ roomId, onStartGame, onCancel }: RoomSetupPr
       roundTime,
       totalRounds
     }
+    
+    // Send start game message to server
+    if (isConnected) {
+      console.log('Starting game with settings:', settings)
+      startGame(settings)
+    }
+    
+    // Call the parent callback
     onStartGame(settings)
   }
 
@@ -205,21 +200,19 @@ export default function RoomSetup({ roomId, onStartGame, onCancel }: RoomSetupPr
                 onChange={(e) => setAllowAdultWords(e.target.checked)}
                 className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
               />
-              <label htmlFor="adultWords" className="text-sm font-medium text-gray-700">
-                Allow 18+ words
+              <label htmlFor="adultWords" className="text-sm text-gray-700">
+                Allow adult content (18+)
               </label>
             </div>
-          </div>
 
-          {/* Right Column - Game Settings & Room Info */}
-          <div className="space-y-6">
-            <div>
+            {/* Game Settings */}
+            <div className="space-y-4">
               <h2 className="text-xl font-semibold text-gray-800 mb-4">Game Settings</h2>
               
               {/* Round Time */}
-              <div className="mb-4">
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Round Time: {roundTime} seconds
+                  Time per Round: {roundTime} seconds
                 </label>
                 <input
                   type="range"
@@ -228,7 +221,7 @@ export default function RoomSetup({ roomId, onStartGame, onCancel }: RoomSetupPr
                   step="15"
                   value={roundTime}
                   onChange={(e) => setRoundTime(Number(e.target.value))}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                 />
                 <div className="flex justify-between text-xs text-gray-500 mt-1">
                   <span>30s</span>
@@ -239,107 +232,146 @@ export default function RoomSetup({ roomId, onStartGame, onCancel }: RoomSetupPr
               </div>
 
               {/* Total Rounds */}
-              <div className="mb-4">
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Total Rounds: {totalRounds}
                 </label>
                 <input
                   type="range"
                   min="3"
-                  max="15"
+                  max="10"
                   step="1"
                   value={totalRounds}
                   onChange={(e) => setTotalRounds(Number(e.target.value))}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                 />
                 <div className="flex justify-between text-xs text-gray-500 mt-1">
                   <span>3</span>
                   <span>5</span>
+                  <span>7</span>
                   <span>10</span>
-                  <span>15</span>
                 </div>
               </div>
             </div>
 
-            {/* Room Link */}
-            <div>
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">Room Link</h2>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={roomLink}
-                  readOnly
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                />
-                <button
-                  onClick={copyToClipboard}
-                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-                >
-                  {copied ? 'Copied!' : 'Copy'}
-                </button>
-              </div>
-            </div>
-
-            {/* Participants List */}
-            <div>
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">Participants</h2>
-              <div className="space-y-2">
-                {/* Host */}
-                <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
-                  <span className="text-2xl">{selectedAvatar}</span>
-                  <div>
-                    <div className="font-medium text-gray-800">{hostName || 'Host'}</div>
-                    <div className="text-sm text-gray-500">👤 Host</div>
-                  </div>
+            {/* Connection Status */}
+            {isConnecting && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="text-sm text-blue-800 text-center">
+                  🔄 Connecting to room...
                 </div>
+              </div>
+            )}
+
+            {error && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="text-sm text-red-800 text-center">
+                  ❌ {error}
+                </div>
+              </div>
+            )}
+
+            {isConnected && !isConnecting && !error && (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="text-sm text-green-800 text-center">
+                  ✅ Connected to room!
+                </div>
+              </div>
+            )}
+
+            {/* Start Game Button */}
+            <button
+              onClick={handleStartGame}
+              disabled={!isConnected || !hostName.trim()}
+              className="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-400 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+            >
+              Start Game
+            </button>
+
+            {/* Cancel Button */}
+            <button
+              onClick={onCancel}
+              className="w-full bg-gray-500 hover:bg-gray-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+
+          {/* Right Column - Room Info & Players */}
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">Room Information</h2>
+              
+              {/* Room Link */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Room Link
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={roomLink}
+                    readOnly
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm"
+                  />
+                  <button
+                    onClick={copyToClipboard}
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  >
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Room ID */}
+              <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                <div className="text-sm text-gray-600 mb-1">Room Code</div>
+                <div className="text-lg font-mono font-semibold text-gray-800">{roomId}</div>
+              </div>
+
+              {/* Players List */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                  Players ({players.length})
+                </h3>
                 
-                {/* Connected Players */}
-                {isConnecting && (
-                  <div className="text-center py-4">
-                    <div className="text-sm text-gray-500">🔄 Connecting to room...</div>
+                {players.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <div className="text-2xl mb-2">👥</div>
+                    <div>No players yet</div>
+                    <div className="text-sm">Share the link to invite friends!</div>
                   </div>
-                )}
-                
-                {connectedPlayers.map((player) => (
-                  <div key={player.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <span className="text-2xl">{player.avatar}</span>
-                    <div>
-                      <div className="font-medium text-gray-800">{player.name}</div>
-                      <div className="text-sm text-gray-500">
-                        {player.isOnline ? '🟢 Online' : '🔴 Offline'}
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {players.map((player) => (
+                      <div
+                        key={player.id}
+                        className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg"
+                      >
+                        <div className="text-2xl">{player.avatar}</div>
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-800">
+                            {player.name}
+                            {player.isDrawer && (
+                              <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                                Drawing
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            Score: {player.score} • Joined {new Date(player.joinedAt).toLocaleTimeString()}
+                          </div>
+                        </div>
+                        <div className={`w-2 h-2 rounded-full ${
+                          player.isOnline ? 'bg-green-500' : 'bg-gray-300'
+                        }`} />
                       </div>
-                    </div>
-                  </div>
-                ))}
-                
-                {connectedPlayers.length === 0 && !isConnecting && (
-                  <div className="text-center py-4">
-                    <div className="text-sm text-gray-500">👥 Share the room link to invite friends!</div>
+                    ))}
                   </div>
                 )}
-                
-                <div className="text-sm text-gray-500 text-center py-4">
-                  {connectedPlayers.length + 1} players ready to play!
-                </div>
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex gap-4 mt-8 pt-6 border-t border-gray-200">
-          <button
-            onClick={onCancel}
-            className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleStartGame}
-            className="flex-1 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-          >
-            Start Game
-          </button>
         </div>
       </div>
     </div>

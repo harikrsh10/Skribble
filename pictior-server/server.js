@@ -76,29 +76,36 @@ function handleMessage(roomId, playerId, message) {
   const room = rooms.get(roomId);
   if (!room) return;
   
+  console.log(`Handling message type: ${message.type} from player: ${playerId}`);
+  
   switch (message.type) {
     case 'join':
     case 'join_room':
       // Add player to room
       const playerData = message.type === 'join_room' ? message.data : message.data;
+      const playerName = playerData.playerName || message.userName || 'Anonymous';
+      const playerAvatar = playerData.playerAvatar || message.data?.avatar || '🐱';
+      
       room.players.set(playerId, {
         id: playerId,
-        name: playerData.playerName || message.userName,
-        avatar: playerData.playerAvatar || message.data.avatar,
+        name: playerName,
+        avatar: playerAvatar,
         isOnline: true,
         isDrawer: false,
         score: 0,
         joinedAt: Date.now()
       });
       
+      console.log(`Player ${playerName} joined room ${roomId}`);
+      
       // Broadcast player joined
       broadcastToRoom(roomId, {
         id: Date.now().toString(),
         type: 'join',
         userId: playerId,
-        userName: playerData.playerName || message.userName,
-        message: `${playerData.playerName || message.userName} joined the game`,
-        data: playerData,
+        userName: playerName,
+        message: `${playerName} joined the game`,
+        data: { playerName, playerAvatar },
         timestamp: Date.now()
       });
       
@@ -137,13 +144,22 @@ function handleMessage(roomId, playerId, message) {
       // Update player name/avatar
       const player = room.players.get(playerId);
       if (player && message.data) {
+        let updated = false;
+        
         if (message.data.playerName) {
           player.name = message.data.playerName;
+          updated = true;
+          console.log(`Player ${playerId} updated name to: ${message.data.playerName}`);
         }
         if (message.data.playerAvatar) {
           player.avatar = message.data.playerAvatar;
+          updated = true;
+          console.log(`Player ${playerId} updated avatar to: ${message.data.playerAvatar}`);
         }
-        updatePlayerList(roomId);
+        
+        if (updated) {
+          updatePlayerList(roomId);
+        }
       }
       break;
       
@@ -156,6 +172,39 @@ function handleMessage(roomId, playerId, message) {
         userName: 'System',
         message: 'heartbeat',
         data: { timestamp: Date.now() },
+        timestamp: Date.now()
+      });
+      break;
+      
+    case 'start_game':
+      // Start the game with provided settings
+      console.log(`Game started in room ${roomId} by ${message.userName}`);
+      
+      // Update game state
+      room.gameState.gameStatus = 'playing';
+      room.gameState.gameSettings = message.data;
+      room.gameState.currentRound = 1;
+      room.gameState.roundStartTime = Date.now();
+      
+      // Broadcast game start to all players
+      broadcastToRoom(roomId, {
+        id: Date.now().toString(),
+        type: 'start_game',
+        userId: playerId,
+        userName: message.userName,
+        message: 'Game started!',
+        data: message.data,
+        timestamp: Date.now()
+      });
+      
+      // Send updated game state to all players
+      broadcastToRoom(roomId, {
+        id: Date.now().toString(),
+        type: 'game_state',
+        userId: 'system',
+        userName: 'System',
+        message: 'game_state',
+        data: room.gameState,
         timestamp: Date.now()
       });
       break;

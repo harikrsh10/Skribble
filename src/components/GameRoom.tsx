@@ -11,7 +11,7 @@ import { useGameLogic } from '@/hooks/useGameLogic'
 import { useGameInitialization } from '@/hooks/useGameInitialization'
 import { useMultiplayer } from '@/hooks/useMultiplayer'
 import { GameRoomProps } from '@/types/game'
-import { GameMessage, Player, GameState } from '@/lib/websocket'
+import { GameMessage, Player, GameState } from '@/types/game'
 import { createSystemMessage, createPlayerMessage } from '@/utils/gameUtils'
 
 export default function GameRoom({ roomId }: GameRoomProps) {
@@ -21,20 +21,22 @@ export default function GameRoom({ roomId }: GameRoomProps) {
   // Game state management
   const { state, actions } = useGameState()
   
-  // Multiplayer functionality
+  // Multiplayer functionality - using new centralized hook
   const {
     isConnected,
-    connectionError,
+    isConnecting,
     players,
+    messages,
+    gameState,
+    error,
     sendGuess,
     sendChat,
-    sendStrokeUpdate,
-    reconnect
-  } = useMultiplayer({
-    roomId,
-    gameSettings,
-    onGameStateUpdate: (gameState: Partial<GameState>) => {
-      // Update local state with server state
+    sendStrokeUpdate
+  } = useMultiplayer(roomId, false) // false = not host (participants)
+
+  // Update local state when server state changes
+  useEffect(() => {
+    if (gameState) {
       if (gameState.currentWord !== undefined) actions.setCurrentWord(gameState.currentWord)
       if (gameState.timeLeft !== undefined) actions.setTimeLeft(gameState.timeLeft)
       if (gameState.currentDrawer !== undefined) {
@@ -48,20 +50,23 @@ export default function GameRoom({ roomId }: GameRoomProps) {
       if (gameState.correctGuesses !== undefined) {
         gameState.correctGuesses.forEach(playerId => actions.addCorrectGuess(playerId))
       }
-      if (gameState.messages !== undefined) {
-        gameState.messages.forEach(message => actions.addMessage(message))
-      }
-    },
-    onPlayerUpdate: (updatedPlayers: Player[]) => {
-      // Update scores based on player data
+    }
+  }, [gameState, actions])
+
+  // Update scores from player list
+  useEffect(() => {
+    if (players.length > 0) {
       const newScores: Record<string, number> = {}
-      updatedPlayers.forEach(player => {
+      players.forEach(player => {
         newScores[player.id] = player.score
       })
       actions.updateScores(newScores)
-    },
-    onMessageReceived: (message: GameMessage) => {
-      // Handle incoming messages
+    }
+  }, [players, actions])
+
+  // Handle incoming messages
+  useEffect(() => {
+    messages.forEach(message => {
       switch (message.type) {
         case 'chat':
           actions.addMessage(message)
@@ -69,7 +74,7 @@ export default function GameRoom({ roomId }: GameRoomProps) {
           
         case 'guess':
           // Handle guess from other players
-          if (message.data.guess && state.currentWord) {
+          if (message.data?.guess && state.currentWord) {
             const isCorrect = message.data.guess.toLowerCase() === state.currentWord.toLowerCase()
             if (isCorrect && !state.correctGuesses.includes(message.userId)) {
               // Player got it right
@@ -98,13 +103,13 @@ export default function GameRoom({ roomId }: GameRoomProps) {
           
         case 'stroke_update':
           // Update canvas strokes from other players
-          if (message.data.strokes && !state.isDrawer) {
+          if (message.data?.strokes && !state.isDrawer) {
             actions.setStrokes(message.data.strokes)
           }
           break
       }
-    }
-  })
+    })
+  }, [messages, state.currentWord, state.correctGuesses, state.scores, state.isDrawer, actions])
 
   // Game logic (simplified for multiplayer)
   const { startNewRound } = useGameLogic({
@@ -197,15 +202,12 @@ export default function GameRoom({ roomId }: GameRoomProps) {
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
           <div className="text-xl font-semibold text-gray-800 mb-4">Connecting to game server...</div>
-          {connectionError && (
-            <div className="text-red-600 mb-4">{connectionError}</div>
+          {error && (
+            <div className="text-red-600 mb-4">{error}</div>
           )}
-          <button
-            onClick={reconnect}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-          >
-            Reconnect
-          </button>
+          {isConnecting && (
+            <div className="text-blue-600">Establishing connection...</div>
+          )}
         </div>
       </div>
     )

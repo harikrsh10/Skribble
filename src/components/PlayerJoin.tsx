@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Player } from '@/types/game'
+import { useMultiplayer } from '@/hooks/useMultiplayer'
 
 const AVATARS = [
   '🐱', '🐶', '🐰', '🐼', '🐨', '🐯', '🦁', '🐸', '🐙', '🦄',
@@ -18,63 +19,30 @@ interface PlayerJoinProps {
 export default function PlayerJoin({ roomId, onJoinRoom, onCancel }: PlayerJoinProps) {
   const [playerName, setPlayerName] = useState('')
   const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0])
-  const [connectedPlayers, setConnectedPlayers] = useState<Player[]>([])
-  const [isConnecting, setIsConnecting] = useState(false)
-  const [roomInfo, setRoomInfo] = useState<any>(null)
   const [hasJoined, setHasJoined] = useState(false)
-  const [ws, setWs] = useState<WebSocket | null>(null)
+  
+  // Use centralized multiplayer hook
+  const {
+    isConnected,
+    isConnecting,
+    players,
+    error,
+    joinRoom,
+    updatePlayer
+  } = useMultiplayer(roomId, false) // false = not host
 
-  // Connect to WebSocket and automatically join room
+  // Auto-join room when connected
   useEffect(() => {
-    setIsConnecting(true)
-    
-    // Create WebSocket connection to listen for room updates
-    const wsServerUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:3002'
-    const wsUrl = `${wsServerUrl}/room/${roomId}`
-    const websocket = new WebSocket(wsUrl)
-    setWs(websocket)
-    
-    websocket.onopen = () => {
-      console.log('Connected to room as player')
-      setIsConnecting(false)
-      
-      // Automatically join room with default name/avatar
-      websocket.send(JSON.stringify({
-        type: 'join_room',
-        data: {
-          roomId,
-          playerName: 'Anonymous',
-          playerAvatar: selectedAvatar
-        }
-      }))
+    if (isConnected && !hasJoined) {
+      console.log('Auto-joining room as participant')
+      joinRoom('Anonymous', selectedAvatar)
       setHasJoined(true)
     }
-    
-    websocket.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data)
-        if (message.type === 'player_update' && message.data.players) {
-          setConnectedPlayers(message.data.players)
-        } else if (message.type === 'room_info' && message.data) {
-          setRoomInfo(message.data)
-        }
-      } catch (error) {
-        console.error('Error parsing WebSocket message:', error)
-      }
-    }
-    
-    websocket.onerror = (error) => {
-      console.error('WebSocket error:', error)
-      setIsConnecting(false)
-    }
-    
-    return () => {
-      websocket.close()
-    }
-  }, [roomId, selectedAvatar])
+  }, [isConnected, hasJoined, joinRoom, selectedAvatar])
 
   const handleNameChange = (name: string) => {
     setPlayerName(name)
+    
     // Update player info in localStorage
     localStorage.setItem('playerInfo', JSON.stringify({
       name: name,
@@ -83,18 +51,12 @@ export default function PlayerJoin({ roomId, onJoinRoom, onCancel }: PlayerJoinP
     }))
     
     // Send update to server
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
-        type: 'update_player',
-        data: {
-          playerName: name
-        }
-      }))
-    }
+    updatePlayer(name, undefined)
   }
 
   const handleAvatarChange = (avatar: string) => {
     setSelectedAvatar(avatar)
+    
     // Update player info in localStorage
     localStorage.setItem('playerInfo', JSON.stringify({
       name: playerName,
@@ -103,14 +65,7 @@ export default function PlayerJoin({ roomId, onJoinRoom, onCancel }: PlayerJoinP
     }))
     
     // Send update to server
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
-        type: 'update_player',
-        data: {
-          playerAvatar: avatar
-        }
-      }))
-    }
+    updatePlayer(undefined, avatar)
   }
 
   return (
@@ -163,7 +118,7 @@ export default function PlayerJoin({ roomId, onJoinRoom, onCancel }: PlayerJoinP
                 </div>
               </div>
 
-              {/* Status Message */}
+              {/* Connection Status */}
               {isConnecting && (
                 <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="text-sm text-blue-800 text-center">
@@ -172,10 +127,18 @@ export default function PlayerJoin({ roomId, onJoinRoom, onCancel }: PlayerJoinP
                 </div>
               )}
 
-              {hasJoined && !isConnecting && (
+              {error && (
+                <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="text-sm text-red-800 text-center">
+                    ❌ {error}
+                  </div>
+                </div>
+              )}
+
+              {isConnected && !isConnecting && !error && (
                 <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
                   <div className="text-sm text-green-800 text-center">
-                    ✅ Successfully joined room!
+                    ✅ Connected to room!
                   </div>
                 </div>
               )}
@@ -202,60 +165,53 @@ export default function PlayerJoin({ roomId, onJoinRoom, onCancel }: PlayerJoinP
             <div>
               <h2 className="text-xl font-semibold text-gray-800 mb-4">Room Information</h2>
               
-              {/* Room Code */}
+              {/* Room ID */}
               <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Room Code
-                </label>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded-lg font-mono text-lg">
-                    {roomId}
-                  </code>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(roomId)}
-                    className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-                  >
-                    Copy
-                  </button>
-                </div>
+                <div className="text-sm text-gray-600 mb-1">Room Code</div>
+                <div className="text-lg font-mono font-semibold text-gray-800">{roomId}</div>
               </div>
 
-              {/* Connected Players */}
+              {/* Players List */}
               <div>
                 <h3 className="text-lg font-semibold text-gray-800 mb-3">
-                  Players ({connectedPlayers.length})
+                  Players ({players.length})
                 </h3>
-                <div className="space-y-2">
-                  {connectedPlayers.map((player, index) => (
-                    <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                      <span className="text-2xl">{player.avatar}</span>
-                      <span className="font-medium">{player.name}</span>
-                      {index === 0 && (
-                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-                          Host
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                  {connectedPlayers.length === 0 && (
-                    <div className="text-gray-500 text-center py-4">
-                      No players connected yet...
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Room Status */}
-              {roomInfo && (
-                <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                  <h3 className="font-semibold text-blue-800 mb-2">Game Settings</h3>
-                  <div className="text-sm text-blue-700 space-y-1">
-                    <div>Rounds: {roomInfo.totalRounds}</div>
-                    <div>Time per round: {roomInfo.roundTime}s</div>
-                    <div>Categories: {roomInfo.selectedCategories?.join(', ') || 'All'}</div>
+                
+                {players.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <div className="text-2xl mb-2">👥</div>
+                    <div>No players yet</div>
+                    <div className="text-sm">You'll be the first!</div>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {players.map((player) => (
+                      <div
+                        key={player.id}
+                        className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg"
+                      >
+                        <div className="text-2xl">{player.avatar}</div>
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-800">
+                            {player.name}
+                            {player.isDrawer && (
+                              <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                                Drawing
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            Score: {player.score} • Joined {new Date(player.joinedAt).toLocaleTimeString()}
+                          </div>
+                        </div>
+                        <div className={`w-2 h-2 rounded-full ${
+                          player.isOnline ? 'bg-green-500' : 'bg-gray-300'
+                        }`} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
