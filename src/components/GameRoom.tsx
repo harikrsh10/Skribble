@@ -1,5 +1,6 @@
 'use client'
 
+// GameRoom component - Multiplayer drawing game with AI players
 import { useState, useEffect } from 'react'
 import EnhancedDrawingCanvas from './EnhancedDrawingCanvas'
 import WordGuessing from './WordGuessing'
