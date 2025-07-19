@@ -16,12 +16,14 @@ export interface Stroke {
 
 export interface Player {
   id: string
-  info: {
-    name: string
-    picture: string
-  }
-  isAI: boolean
+  name: string
+  avatar: string
+  isOnline: boolean
+  isDrawer: boolean
   score: number
+  joinedAt: number
+  isAI?: boolean // For backward compatibility
+  info?: { name: string; picture: string } // For backward compatibility
 }
 
 export interface GameMessage {
@@ -30,6 +32,8 @@ export interface GameMessage {
   userName: string
   message: string
   timestamp: number
+  type?: string // For WebSocket compatibility
+  data?: any // For WebSocket compatibility
 }
 
 export interface GameState {
@@ -44,6 +48,12 @@ export interface GameState {
   roundStartTime: number
   correctGuesses: string[]
   currentDrawerId: string
+  // Multiplayer additions
+  roomId?: string
+  currentDrawer?: string | null
+  players?: Player[]
+  gameStatus?: 'waiting' | 'playing' | 'finished'
+  gameSettings?: any
 }
 
 export interface GameSettings {

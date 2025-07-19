@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useCallback } from 'react'
 import EnhancedDrawingCanvas from './EnhancedDrawingCanvas'
 import WordGuessing from './WordGuessing'
 import ChatBox from './ChatBox'
@@ -9,62 +9,166 @@ import GameInfo from './GameInfo'
 import { useGameState } from '@/hooks/useGameState'
 import { useGameLogic } from '@/hooks/useGameLogic'
 import { useGameInitialization } from '@/hooks/useGameInitialization'
+import { useMultiplayer } from '@/hooks/useMultiplayer'
 import { GameRoomProps } from '@/types/game'
+import { GameMessage, Player, GameState } from '@/lib/websocket'
+import { createSystemMessage, createPlayerMessage } from '@/utils/gameUtils'
 
 export default function GameRoom({ roomId }: GameRoomProps) {
-  // Initialize game state and players
-  const { gameSettings, allPlayers, isLoading } = useGameInitialization()
+  // Initialize game state and settings
+  const { gameSettings, isLoading } = useGameInitialization()
   
   // Game state management
   const { state, actions } = useGameState()
   
-  // Game logic and AI behavior
-  const { startNewRound, handleGuess } = useGameLogic({
+  // Multiplayer functionality
+  const {
+    isConnected,
+    connectionError,
+    players,
+    sendGuess,
+    sendChat,
+    sendStrokeUpdate,
+    reconnect
+  } = useMultiplayer({
+    roomId,
     gameSettings,
-    allPlayers,
+    onGameStateUpdate: (gameState: Partial<GameState>) => {
+      // Update local state with server state
+      if (gameState.currentWord !== undefined) actions.setCurrentWord(gameState.currentWord)
+      if (gameState.timeLeft !== undefined) actions.setTimeLeft(gameState.timeLeft)
+      if (gameState.currentDrawer !== undefined) {
+        actions.setCurrentDrawer(gameState.currentDrawer || '')
+        actions.setIsDrawer(gameState.currentDrawer === 'player1')
+      }
+      if (gameState.scores !== undefined) actions.updateScores(gameState.scores)
+      if (gameState.strokes !== undefined) actions.setStrokes(gameState.strokes)
+      if (gameState.currentRound !== undefined) actions.setCurrentRound(gameState.currentRound)
+      if (gameState.roundStartTime !== undefined) actions.setRoundStartTime(gameState.roundStartTime)
+      if (gameState.correctGuesses !== undefined) {
+        gameState.correctGuesses.forEach(playerId => actions.addCorrectGuess(playerId))
+      }
+      if (gameState.messages !== undefined) {
+        gameState.messages.forEach(message => actions.addMessage(message))
+      }
+    },
+    onPlayerUpdate: (updatedPlayers: Player[]) => {
+      // Update scores based on player data
+      const newScores: Record<string, number> = {}
+      updatedPlayers.forEach(player => {
+        newScores[player.id] = player.score
+      })
+      actions.updateScores(newScores)
+    },
+    onMessageReceived: (message: GameMessage) => {
+      // Handle incoming messages
+      switch (message.type) {
+        case 'chat':
+          actions.addMessage(message)
+          break
+          
+        case 'guess':
+          // Handle guess from other players
+          if (message.data.guess && state.currentWord) {
+            const isCorrect = message.data.guess.toLowerCase() === state.currentWord.toLowerCase()
+            if (isCorrect && !state.correctGuesses.includes(message.userId)) {
+              // Player got it right
+              const guessOrder = state.correctGuesses.length + 1
+              const points = Math.max(10, 100 - (guessOrder - 1) * 20)
+              
+              // Update scores
+              const newScores = { ...state.scores }
+              newScores[message.userId] = (newScores[message.userId] || 0) + points
+              actions.updateScores(newScores)
+              actions.addCorrectGuess(message.userId)
+              
+              // Add success message
+              const successMessage = createPlayerMessage(
+                message.userId,
+                message.userName,
+                `🎉 Correct! "${state.currentWord}" (+${points} points)`
+              )
+              actions.addMessage(successMessage)
+            } else {
+              // Wrong guess
+              actions.addMessage(message)
+            }
+          }
+          break
+          
+        case 'stroke_update':
+          // Update canvas strokes from other players
+          if (message.data.strokes && !state.isDrawer) {
+            actions.setStrokes(message.data.strokes)
+          }
+          break
+      }
+    }
+  })
+
+  // Game logic (simplified for multiplayer)
+  const { startNewRound } = useGameLogic({
+    gameSettings,
+    allPlayers: players,
     state,
     actions
   })
 
-  // Initialize scores when players are loaded
-  useEffect(() => {
-    if (allPlayers.length > 0 && Object.keys(state.scores).length === 0) {
-      const initialScores: Record<string, number> = {}
-      allPlayers.forEach(player => {
-        initialScores[player.id] = player.score
-      })
-      actions.updateScores(initialScores)
+  // Handle player guess
+  const handlePlayerGuess = useCallback((guess: string) => {
+    if (!state.currentWord || state.isDrawer) return
+    
+    const isCorrect = guess.toLowerCase() === state.currentWord.toLowerCase()
+    
+    if (isCorrect && !state.correctGuesses.includes('player1')) {
+      // Calculate points
+      const guessOrder = state.correctGuesses.length + 1
+      const points = Math.max(10, 100 - (guessOrder - 1) * 20)
+      
+      // Update local scores
+      const newScores = { ...state.scores }
+      newScores['player1'] = (newScores['player1'] || 0) + points
+      actions.updateScores(newScores)
+      actions.addCorrectGuess('player1')
+      
+      // Add success message
+      const successMessage = createPlayerMessage(
+        'player1',
+        'You',
+        `🎉 Correct! "${state.currentWord}" (+${points} points)`
+      )
+      actions.addMessage(successMessage)
+    } else {
+      // Wrong guess
+      const message = createPlayerMessage('player1', 'You', guess)
+      actions.addMessage(message)
     }
-  }, [allPlayers, state.scores, actions])
+    
+    // Send guess to server
+    sendGuess(guess)
+  }, [state.currentWord, state.isDrawer, state.correctGuesses, state.scores, actions, sendGuess])
+
+  // Handle chat message
+  const handleSendMessage = useCallback((message: string) => {
+    const chatMessage = createPlayerMessage('player1', 'You', message)
+    actions.addMessage(chatMessage)
+    sendChat(message)
+  }, [actions, sendChat])
+
+  // Handle strokes change
+  const handleStrokesChange = useCallback((newStrokes: any[]) => {
+    actions.setStrokes(newStrokes)
+    if (state.isDrawer) {
+      sendStrokeUpdate(newStrokes)
+    }
+  }, [actions, state.isDrawer, sendStrokeUpdate])
 
   // Start first round when game is ready
   useEffect(() => {
-    if (gameSettings && !state.currentWord) {
+    if (gameSettings && !state.currentWord && isConnected) {
       startNewRound()
     }
-  }, [gameSettings, state.currentWord, startNewRound])
-
-  // Handle player guess
-  const handlePlayerGuess = (guess: string) => {
-    handleGuess(guess, 'player1')
-  }
-
-  // Handle chat message
-  const handleSendMessage = (message: string) => {
-    const newMessage = {
-      id: Date.now().toString(),
-      userId: 'player1',
-      userName: 'You',
-      message: message,
-      timestamp: Date.now()
-    }
-    actions.addMessage(newMessage)
-  }
-
-  // Handle strokes change
-  const handleStrokesChange = (newStrokes: any[]) => {
-    actions.setStrokes(newStrokes)
-  }
+  }, [gameSettings, state.currentWord, isConnected, startNewRound])
 
   if (isLoading) {
     return (
@@ -88,9 +192,41 @@ export default function GameRoom({ roomId }: GameRoomProps) {
     )
   }
 
+  if (!isConnected) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-xl font-semibold text-gray-800 mb-4">Connecting to game server...</div>
+          {connectionError && (
+            <div className="text-red-600 mb-4">{connectionError}</div>
+          )}
+          <button
+            onClick={reconnect}
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            Reconnect
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 p-4">
       <div className="max-w-7xl mx-auto">
+        {/* Connection status */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <span className="text-sm text-gray-600">
+              {isConnected ? 'Connected' : 'Disconnected'}
+            </span>
+          </div>
+          <div className="text-sm text-gray-600">
+            Players: {players.length}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           {/* Main game area */}
           <div className="lg:col-span-3 space-y-4">
@@ -124,7 +260,7 @@ export default function GameRoom({ roomId }: GameRoomProps) {
         {/* Bottom section - Chat and Scoreboard */}
         <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Scoreboard 
-            players={allPlayers}
+            players={players}
             scores={state.scores}
           />
           <ChatBox 

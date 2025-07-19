@@ -1,9 +1,40 @@
+// Real-time multiplayer WebSocket implementation
+
 export interface GameMessage {
-  type: 'draw' | 'guess' | 'chat' | 'join' | 'leave' | 'round_start' | 'round_end'
+  id: string
+  type: 'draw' | 'guess' | 'chat' | 'join' | 'leave' | 'round_start' | 'round_end' | 'stroke_update' | 'player_update' | 'game_state' | 'heartbeat'
   userId: string
   userName: string
+  message: string
   data: any
   timestamp: number
+}
+
+export interface Player {
+  id: string
+  name: string
+  avatar: string
+  isOnline: boolean
+  isDrawer: boolean
+  score: number
+  joinedAt: number
+}
+
+export interface GameState {
+  roomId: string
+  currentWord: string
+  timeLeft: number
+  currentDrawer: string | null
+  players: Player[]
+  scores: Record<string, number>
+  strokes: any[]
+  messages: GameMessage[]
+  currentRound: number
+  totalRounds: number
+  roundStartTime: number
+  correctGuesses: string[]
+  gameStatus: 'waiting' | 'playing' | 'finished'
+  gameSettings: any
 }
 
 export class GameWebSocket {
@@ -11,13 +42,21 @@ export class GameWebSocket {
   private messageHandlers: ((message: GameMessage) => void)[] = []
   private reconnectAttempts = 0
   private maxReconnectAttempts = 5
+  private reconnectInterval: number = 1000
+  private heartbeatInterval: NodeJS.Timeout | null = null
+  private isConnected = false
 
-  constructor(private roomId: string, private userId: string, private userName: string) {}
+  constructor(
+    private roomId: string, 
+    private userId: string, 
+    private userName: string,
+    private userAvatar: string
+  ) {}
 
   connect() {
     try {
-      // For development, use a local WebSocket server
-      // In production, replace with your WebSocket server URL
+      // Use a real WebSocket server URL
+      // For development, you can use a service like ngrok or deploy your own server
       const wsUrl = process.env.NODE_ENV === 'development' 
         ? `ws://localhost:3001/room/${this.roomId}`
         : `wss://your-websocket-server.com/room/${this.roomId}`
@@ -26,14 +65,21 @@ export class GameWebSocket {
       
       this.ws.onopen = () => {
         console.log('Connected to game server')
+        this.isConnected = true
         this.reconnectAttempts = 0
+        this.startHeartbeat()
         
         // Send join message
         this.send({
+          id: Date.now().toString(),
           type: 'join',
           userId: this.userId,
           userName: this.userName,
-          data: {}
+          message: `${this.userName} joined the game`,
+          data: {
+            avatar: this.userAvatar,
+            joinedAt: Date.now()
+          }
         })
       }
       
@@ -46,16 +92,45 @@ export class GameWebSocket {
         }
       }
       
-      this.ws.onclose = () => {
-        console.log('Disconnected from game server')
-        this.attemptReconnect()
+      this.ws.onclose = (event) => {
+        console.log('Disconnected from game server:', event.code, event.reason)
+        this.isConnected = false
+        this.stopHeartbeat()
+        
+        if (!event.wasClean) {
+          this.attemptReconnect()
+        }
       }
       
       this.ws.onerror = (error) => {
         console.error('WebSocket error:', error)
+        this.isConnected = false
       }
     } catch (error) {
       console.error('Failed to connect:', error)
+      this.attemptReconnect()
+    }
+  }
+
+  private startHeartbeat() {
+    this.heartbeatInterval = setInterval(() => {
+      if (this.isConnected && this.ws?.readyState === WebSocket.OPEN) {
+        this.send({
+          id: Date.now().toString(),
+          type: 'heartbeat',
+          userId: this.userId,
+          userName: this.userName,
+          message: 'heartbeat',
+          data: { timestamp: Date.now() }
+        })
+      }
+    }, 30000) // Send heartbeat every 30 seconds
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval)
+      this.heartbeatInterval = null
     }
   }
 
@@ -66,40 +141,92 @@ export class GameWebSocket {
       
       setTimeout(() => {
         this.connect()
-      }, 1000 * this.reconnectAttempts)
+      }, this.reconnectInterval * this.reconnectAttempts)
+    } else {
+      console.error('Max reconnection attempts reached')
     }
   }
 
   send(message: Omit<GameMessage, 'timestamp'>) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({
+      const fullMessage = {
         ...message,
         timestamp: Date.now()
-      }))
+      }
+      this.ws.send(JSON.stringify(fullMessage))
+    } else {
+      console.warn('WebSocket not connected, message not sent:', message)
     }
+  }
+
+  sendGuess(guess: string) {
+    this.send({
+      id: Date.now().toString(),
+      type: 'guess',
+      userId: this.userId,
+      userName: this.userName,
+      message: guess,
+      data: { guess }
+    })
+  }
+
+  sendChat(message: string) {
+    this.send({
+      id: Date.now().toString(),
+      type: 'chat',
+      userId: this.userId,
+      userName: this.userName,
+      message: message,
+      data: { message }
+    })
+  }
+
+  sendStrokeUpdate(strokes: any[]) {
+    this.send({
+      id: Date.now().toString(),
+      type: 'stroke_update',
+      userId: this.userId,
+      userName: this.userName,
+      message: 'stroke_update',
+      data: { strokes }
+    })
   }
 
   onMessage(handler: (message: GameMessage) => void) {
     this.messageHandlers.push(handler)
   }
 
+  removeMessageHandler(handler: (message: GameMessage) => void) {
+    const index = this.messageHandlers.indexOf(handler)
+    if (index > -1) {
+      this.messageHandlers.splice(index, 1)
+    }
+  }
+
   disconnect() {
+    this.stopHeartbeat()
     if (this.ws) {
-      this.ws.close()
+      this.ws.close(1000, 'User disconnected')
       this.ws = null
     }
+    this.isConnected = false
+  }
+
+  getConnectionStatus(): boolean {
+    return this.isConnected && this.ws?.readyState === WebSocket.OPEN
   }
 }
 
-// Simple in-memory game state for development
+// Fallback to local state when WebSocket is not available
 export class LocalGameState {
   private static instance: LocalGameState
-  private players: Map<string, { name: string; score: number }> = new Map()
+  private players: Map<string, Player> = new Map()
   private messages: GameMessage[] = []
   private strokes: any[] = []
   private currentWord = ''
   private currentDrawer = ''
   private timeLeft = 60
+  private gameState: GameState | null = null
 
   static getInstance(): LocalGameState {
     if (!LocalGameState.instance) {
@@ -108,27 +235,31 @@ export class LocalGameState {
     return LocalGameState.instance
   }
 
-  addPlayer(userId: string, name: string) {
-    this.players.set(userId, { name, score: 0 })
+  addPlayer(userId: string, name: string, avatar: string) {
+    this.players.set(userId, {
+      id: userId,
+      name,
+      avatar,
+      isOnline: true,
+      isDrawer: false,
+      score: 0,
+      joinedAt: Date.now()
+    })
   }
 
   removePlayer(userId: string) {
     this.players.delete(userId)
   }
 
-  getPlayers() {
-    return Array.from(this.players.entries()).map(([id, player]) => ({
-      id,
-      name: player.name,
-      score: player.score
-    }))
+  getPlayers(): Player[] {
+    return Array.from(this.players.values())
   }
 
   addMessage(message: GameMessage) {
     this.messages.push(message)
   }
 
-  getMessages() {
+  getMessages(): GameMessage[] {
     return this.messages
   }
 
@@ -136,7 +267,7 @@ export class LocalGameState {
     this.strokes = strokes
   }
 
-  getStrokes() {
+  getStrokes(): any[] {
     return this.strokes
   }
 
@@ -144,15 +275,19 @@ export class LocalGameState {
     this.currentWord = word
   }
 
-  getCurrentWord() {
+  getCurrentWord(): string {
     return this.currentWord
   }
 
   setCurrentDrawer(drawerId: string) {
     this.currentDrawer = drawerId
+    // Update all players' drawer status
+    this.players.forEach(player => {
+      player.isDrawer = player.id === drawerId
+    })
   }
 
-  getCurrentDrawer() {
+  getCurrentDrawer(): string {
     return this.currentDrawer
   }
 
@@ -160,7 +295,15 @@ export class LocalGameState {
     this.timeLeft = time
   }
 
-  getTimeLeft() {
+  getTimeLeft(): number {
     return this.timeLeft
+  }
+
+  updateGameState(state: Partial<GameState>) {
+    this.gameState = { ...this.gameState, ...state } as GameState
+  }
+
+  getGameState(): GameState | null {
+    return this.gameState
   }
 } 
