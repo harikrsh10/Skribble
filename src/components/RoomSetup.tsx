@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { generateDummyPlayers, DummyPlayer } from '@/lib/dummyPlayers'
+import { Player } from '@/types/game'
 
 const AVATARS = [
   '🐱', '🐶', '🐰', '🐼', '🐨', '🐯', '🦁', '🐸', '🐙', '🦄',
@@ -45,7 +45,8 @@ export default function RoomSetup({ roomId, onStartGame, onCancel }: RoomSetupPr
   const [roundTime, setRoundTime] = useState(60)
   const [totalRounds, setTotalRounds] = useState(5)
   const [copied, setCopied] = useState(false)
-  const [dummyPlayers, setDummyPlayers] = useState<DummyPlayer[]>([])
+  const [connectedPlayers, setConnectedPlayers] = useState<Player[]>([])
+  const [isConnecting, setIsConnecting] = useState(false)
 
   const roomLink = `${window.location.origin}/room/${roomId}`
 
@@ -67,11 +68,39 @@ export default function RoomSetup({ roomId, onStartGame, onCancel }: RoomSetupPr
     )
   }
 
-  // Generate dummy players on component mount
+  // Connect to WebSocket and listen for real players
   useEffect(() => {
-    const dummies = generateDummyPlayers(3)
-    setDummyPlayers(dummies)
-  }, [])
+    setIsConnecting(true)
+    
+    // Create WebSocket connection to listen for real players
+    const wsUrl = `ws://localhost:3002/room/${roomId}`
+    const ws = new WebSocket(wsUrl)
+    
+    ws.onopen = () => {
+      console.log('Connected to room for player updates')
+      setIsConnecting(false)
+    }
+    
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data)
+        if (message.type === 'player_update' && message.data.players) {
+          setConnectedPlayers(message.data.players)
+        }
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error)
+      }
+    }
+    
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error)
+      setIsConnecting(false)
+    }
+    
+    return () => {
+      ws.close()
+    }
+  }, [roomId])
 
   const handleStartGame = () => {
     if (!hostName.trim()) {
@@ -263,19 +292,33 @@ export default function RoomSetup({ roomId, onStartGame, onCancel }: RoomSetupPr
                   </div>
                 </div>
                 
-                {/* Dummy Players */}
-                {dummyPlayers.map((player, index) => (
+                {/* Connected Players */}
+                {isConnecting && (
+                  <div className="text-center py-4">
+                    <div className="text-sm text-gray-500">🔄 Connecting to room...</div>
+                  </div>
+                )}
+                
+                {connectedPlayers.map((player) => (
                   <div key={player.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                     <span className="text-2xl">{player.avatar}</span>
                     <div>
                       <div className="font-medium text-gray-800">{player.name}</div>
-                      <div className="text-sm text-gray-500">🤖 AI Player</div>
+                      <div className="text-sm text-gray-500">
+                        {player.isOnline ? '🟢 Online' : '🔴 Offline'}
+                      </div>
                     </div>
                   </div>
                 ))}
                 
+                {connectedPlayers.length === 0 && !isConnecting && (
+                  <div className="text-center py-4">
+                    <div className="text-sm text-gray-500">👥 Share the room link to invite friends!</div>
+                  </div>
+                )}
+                
                 <div className="text-sm text-gray-500 text-center py-4">
-                  {dummyPlayers.length + 1} players ready to play!
+                  {connectedPlayers.length + 1} players ready to play!
                 </div>
               </div>
             </div>
