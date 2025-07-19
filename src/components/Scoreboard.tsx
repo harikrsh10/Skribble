@@ -2,11 +2,12 @@
 
 interface Player {
   id: string
-  info?: {
-    name: string
-    picture: string
-  }
-  isAI?: boolean
+  name: string
+  avatar: string
+  isOnline: boolean
+  isDrawer: boolean
+  score: number
+  joinedAt: number
 }
 
 interface ScoreboardProps {
@@ -18,8 +19,7 @@ export default function Scoreboard({ players, scores }: ScoreboardProps) {
   const sortedPlayers = players
     .map(player => ({
       ...player,
-      score: scores[player.id] || 0,
-      name: player.info?.name || `Player${player.id.slice(-4)}`
+      score: scores[player.id] || 0
     }))
     .sort((a, b) => b.score - a.score)
 
@@ -43,7 +43,7 @@ export default function Scoreboard({ players, scores }: ScoreboardProps) {
                     <div>
                       <div className="font-medium text-gray-800">{player.name}</div>
                       <div className="text-sm text-gray-500">
-                        {player.isAI ? '🤖 AI Player' : '👤 You'}
+                        {player.isOnline ? '🟢 Online' : '🔴 Offline'}
                       </div>
                     </div>
                   </div>

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { Player, GameSettings } from '@/types/game'
-import { generateDummyPlayers } from '@/lib/dummyPlayers'
 
 export function useGameInitialization() {
   const [gameSettings, setGameSettings] = useState<GameSettings | null>(null)
@@ -19,10 +18,7 @@ export function useGameInitialization() {
         const settings: GameSettings = JSON.parse(savedSettings)
         setGameSettings(settings)
 
-        // Generate dummy players
-        const dummies = generateDummyPlayers(3) // 3 AI players
-
-        // Create all players array (host + dummies)
+        // Create host player only (no dummy players)
         const hostPlayer: Player = {
           id: 'player1',
           name: settings.hostName,
@@ -38,22 +34,7 @@ export function useGameInitialization() {
           }
         }
 
-        const aiPlayers: Player[] = dummies.map(dp => ({
-          id: dp.id,
-          name: dp.name,
-          avatar: dp.avatar,
-          isOnline: true,
-          isDrawer: false,
-          score: dp.score,
-          joinedAt: Date.now(),
-          isAI: dp.isAI,
-          info: { 
-            name: dp.name, 
-            picture: dp.avatar 
-          }
-        }))
-
-        const allPlayersArray = [hostPlayer, ...aiPlayers]
+        const allPlayersArray = [hostPlayer]
         setAllPlayers(allPlayersArray)
 
         // Initialize scores

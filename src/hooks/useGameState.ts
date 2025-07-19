@@ -1,7 +1,6 @@
 import { useReducer, useCallback } from 'react'
 import { GameState, GameAction, GameMessage, Player } from '@/types/game'
 import { getRandomWord } from '@/lib/words'
-import { generateDummyPlayers, simulateAIGuess, simulateAIMessage } from '@/lib/dummyPlayers'
 
 const initialState: GameState = {
   currentWord: '',

@@ -1,7 +1,6 @@
 import { useEffect, useCallback, useRef } from 'react'
 import { Player, GameMessage } from '@/types/game'
 import { getRandomWord } from '@/lib/words'
-import { simulateAIGuess, simulateAIMessage } from '@/lib/dummyPlayers'
 
 interface UseGameLogicProps {
   gameSettings: any
@@ -115,53 +114,7 @@ export function useGameLogic({ gameSettings, allPlayers, state, actions }: UseGa
     }
   }, [state.roundStartTime, gameSettings, state.currentRound, state.totalRounds, actions, startNewRound])
 
-  // AI behavior simulation
-  useEffect(() => {
-    if (!state.currentWord || state.isDrawer || state.correctGuesses.length >= allPlayers.length - 1) {
-      if (aiIntervalRef.current) {
-        clearInterval(aiIntervalRef.current)
-        aiIntervalRef.current = null
-      }
-      return
-    }
-    
-    aiIntervalRef.current = setInterval(() => {
-      // Random chance for AI to make a guess or send a message
-      if (Math.random() < 0.3) { // 30% chance every few seconds
-        const aiPlayers = allPlayers.filter(p => p.isAI && p.id !== state.currentDrawerId)
-        if (aiPlayers.length > 0) {
-          const randomAI = aiPlayers[Math.floor(Math.random() * aiPlayers.length)]
-          
-          if (Math.random() < 0.7) { // 70% chance to guess, 30% to chat
-            // AI makes a guess
-            const guess = simulateAIGuess(state.currentWord, 'medium')
-            const isCorrect = handleGuess(guess, randomAI.id)
-            
-            if (!isCorrect) {
-              // AI made a wrong guess - already handled in handleGuess
-            }
-          } else {
-            // AI sends a chat message
-            const chatMessage: GameMessage = {
-              id: Date.now().toString(),
-              userId: randomAI.id,
-              userName: randomAI.name,
-              message: simulateAIMessage(),
-              timestamp: Date.now()
-            }
-            actions.addMessage(chatMessage)
-          }
-        }
-      }
-    }, 3000) // Check every 3 seconds
-
-    return () => {
-      if (aiIntervalRef.current) {
-        clearInterval(aiIntervalRef.current)
-        aiIntervalRef.current = null
-      }
-    }
-  }, [state.currentWord, state.isDrawer, state.correctGuesses, allPlayers, state.currentDrawerId, actions, handleGuess])
+  // No AI behavior simulation - only real players
 
   // Cleanup on unmount
   useEffect(() => {
