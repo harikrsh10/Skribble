@@ -68,15 +68,17 @@ function handleMessage(roomId, playerId, message) {
   
   switch (message.type) {
     case 'join':
+    case 'join_room':
       // Add player to room
+      const playerData = message.type === 'join_room' ? message.data : message.data;
       room.players.set(playerId, {
         id: playerId,
-        name: message.userName,
-        avatar: message.data.avatar,
+        name: playerData.playerName || message.userName,
+        avatar: playerData.playerAvatar || message.data.avatar,
         isOnline: true,
         isDrawer: false,
         score: 0,
-        joinedAt: message.data.joinedAt
+        joinedAt: Date.now()
       });
       
       // Broadcast player joined
@@ -84,9 +86,9 @@ function handleMessage(roomId, playerId, message) {
         id: Date.now().toString(),
         type: 'join',
         userId: playerId,
-        userName: message.userName,
-        message: `${message.userName} joined the game`,
-        data: message.data,
+        userName: playerData.playerName || message.userName,
+        message: `${playerData.playerName || message.userName} joined the game`,
+        data: playerData,
         timestamp: Date.now()
       });
       
