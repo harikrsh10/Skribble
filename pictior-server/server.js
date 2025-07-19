@@ -249,6 +249,17 @@ app.get('/health', (req, res) => {
     status: 'ok', 
     rooms: rooms.size, 
     players: players.size,
+    timestamp: new Date().toISOString(),
+    port: PORT,
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// Root endpoint for testing
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Pictior WebSocket Server is running!',
+    status: 'ok',
     timestamp: new Date().toISOString()
   });
 });
@@ -274,7 +285,7 @@ app.get('/room/:roomId', (req, res) => {
 const PORT = process.env.PORT || 3002;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🎮 Pictior WebSocket server running on port ${PORT}`);
-  console.log(`📊 Health check: http://192.168.31.119:${PORT}/health`);
-  console.log(`🌐 WebSocket URL: ws://192.168.31.119:${PORT}`);
-  console.log(`🌐 Local WebSocket URL: ws://localhost:${PORT}`);
+  console.log(`📊 Health check: http://localhost:${PORT}/health`);
+  console.log(`🌐 WebSocket URL: ws://localhost:${PORT}`);
+  console.log(`🚀 Server ready for connections!`);
 }); 
