@@ -55,11 +55,9 @@ export class GameWebSocket {
 
   connect() {
     try {
-      // Use a real WebSocket server URL
-      // For development, you can use a service like ngrok or deploy your own server
-      const wsUrl = process.env.NODE_ENV === 'development' 
-        ? `ws://localhost:3002/room/${this.roomId}`
-        : `wss://your-websocket-server.com/room/${this.roomId}`
+      // Use environment variable for WebSocket server URL
+      const wsServerUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:3002'
+      const wsUrl = `${wsServerUrl}/room/${this.roomId}`
       
       this.ws = new WebSocket(wsUrl)
       
@@ -206,18 +204,18 @@ export class GameWebSocket {
   disconnect() {
     this.stopHeartbeat()
     if (this.ws) {
-      this.ws.close(1000, 'User disconnected')
+      this.ws.close()
       this.ws = null
     }
     this.isConnected = false
   }
 
   getConnectionStatus(): boolean {
-    return this.isConnected && this.ws?.readyState === WebSocket.OPEN
+    return this.isConnected
   }
 }
 
-// Fallback to local state when WebSocket is not available
+// Local fallback state for offline mode
 export class LocalGameState {
   private static instance: LocalGameState
   private players: Map<string, Player> = new Map()
@@ -226,7 +224,6 @@ export class LocalGameState {
   private currentWord = ''
   private currentDrawer = ''
   private timeLeft = 60
-  private gameState: GameState | null = null
 
   static getInstance(): LocalGameState {
     if (!LocalGameState.instance) {
@@ -281,10 +278,6 @@ export class LocalGameState {
 
   setCurrentDrawer(drawerId: string) {
     this.currentDrawer = drawerId
-    // Update all players' drawer status
-    this.players.forEach(player => {
-      player.isDrawer = player.id === drawerId
-    })
   }
 
   getCurrentDrawer(): string {
@@ -300,10 +293,28 @@ export class LocalGameState {
   }
 
   updateGameState(state: Partial<GameState>) {
-    this.gameState = { ...this.gameState, ...state } as GameState
+    if (state.currentWord) this.currentWord = state.currentWord
+    if (state.timeLeft) this.timeLeft = state.timeLeft
+    if (state.currentDrawer) this.currentDrawer = state.currentDrawer
+    if (state.strokes) this.strokes = state.strokes
   }
 
   getGameState(): GameState | null {
-    return this.gameState
+    return {
+      roomId: '',
+      currentWord: this.currentWord,
+      timeLeft: this.timeLeft,
+      currentDrawer: this.currentDrawer,
+      players: this.getPlayers(),
+      scores: {},
+      strokes: this.strokes,
+      messages: this.messages,
+      currentRound: 1,
+      totalRounds: 5,
+      roundStartTime: 0,
+      correctGuesses: [],
+      gameStatus: 'waiting',
+      gameSettings: {}
+    }
   }
 } 
