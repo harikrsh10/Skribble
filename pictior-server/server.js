@@ -260,6 +260,17 @@ app.get('/', (req, res) => {
   res.json({ 
     message: 'Pictior WebSocket Server is running!',
     status: 'ok',
+    timestamp: new Date().toISOString(),
+    port: PORT,
+    environment: process.env.NODE_ENV || 'development',
+    uptime: process.uptime()
+  });
+});
+
+// Test endpoint
+app.get('/test', (req, res) => {
+  res.json({ 
+    message: 'Server is responding!',
     timestamp: new Date().toISOString()
   });
 });
@@ -283,9 +294,20 @@ app.get('/room/:roomId', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3002;
+
+// Add error handling for server startup
+server.on('error', (error) => {
+  console.error('❌ Server error:', error);
+  if (error.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use`);
+  }
+});
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🎮 Pictior WebSocket server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🌐 WebSocket URL: ws://localhost:${PORT}`);
   console.log(`🚀 Server ready for connections!`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔧 Process ID: ${process.pid}`);
 }); 
