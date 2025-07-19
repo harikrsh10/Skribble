@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import RoomSetup, { GameSettings } from '@/components/RoomSetup'
+import RoomSetup from '@/components/RoomSetup'
+import { GameSettings } from '@/hooks/useMultiplayer'
 
 export default function Home() {
   const [roomId, setRoomId] = useState('')
