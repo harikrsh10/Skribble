@@ -25,22 +25,32 @@ export function useGameInitialization() {
         // Create all players array (host + dummies)
         const hostPlayer: Player = {
           id: 'player1',
+          name: settings.hostName,
+          avatar: settings.hostAvatar,
+          isOnline: true,
+          isDrawer: false,
+          score: 0,
+          joinedAt: Date.now(),
+          isAI: false,
           info: { 
             name: settings.hostName, 
             picture: settings.hostAvatar 
-          },
-          isAI: false,
-          score: 0
+          }
         }
 
         const aiPlayers: Player[] = dummies.map(dp => ({
           id: dp.id,
+          name: dp.name,
+          avatar: dp.avatar,
+          isOnline: true,
+          isDrawer: false,
+          score: dp.score,
+          joinedAt: Date.now(),
+          isAI: dp.isAI,
           info: { 
             name: dp.name, 
             picture: dp.avatar 
-          },
-          isAI: dp.isAI,
-          score: dp.score
+          }
         }))
 
         const allPlayersArray = [hostPlayer, ...aiPlayers]
